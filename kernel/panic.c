@@ -196,6 +196,11 @@ void panic(const char *fmt, ...)
 	int old_cpu, this_cpu;
 	bool _crash_kexec_post_notifiers = crash_kexec_post_notifiers;
 
+	if (!in_atomic()) {
+		pr_emerg("sys_sync:try sys_sync in panic\n");
+		exec_fs_sync_work();
+	}
+
 	if (panic_on_warn) {
 		/*
 		 * This thread may hit another WARN() in the panic path.

@@ -459,6 +459,10 @@ static int __qseecom_alloc_coherent_buf(
 static void __qseecom_free_coherent_buf(uint32_t size,
 				u8 *vaddr, phys_addr_t paddr);
 
+#ifdef CONFIG_MSM_TZ_LOG
+extern void read_qseelog_wakeup(void);
+#endif
+
 #define QSEECOM_SCM_EBUSY_WAIT_MS 30
 #define QSEECOM_SCM_EBUSY_MAX_RETRY 67
 
@@ -1145,6 +1149,9 @@ static int qseecom_scm_call2(uint32_t svc_id, uint32_t tz_cmd_id,
 		svc_id, tz_cmd_id, qseos_cmd_id, smc_id, desc.arginfo);
 	pr_debug("scm_resp->result = 0x%x, scm_resp->resp_type = 0x%x, scm_resp->data = 0x%x\n",
 		scm_resp->result, scm_resp->resp_type, scm_resp->data);
+#ifdef CONFIG_MSM_TZ_LOG
+	read_qseelog_wakeup();
+#endif
 	return ret;
 }
 
