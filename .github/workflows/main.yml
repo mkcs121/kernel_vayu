@@ -1,0 +1,84 @@
+name: Kernel CI
+
+on:
+  push:
+    branches:
+      - '*'
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install required packages
+      run: |
+        sudo apt update
+        sudo apt install -y sed xz-utils wget curl build-essential gcc-multilib git libssl-dev flex bison bc python2 python-is-python3 device-tree-compiler binutils-aarch64-linux-gnu clang llvm lld ccache
+
+    - name: Build config
+      run: make -j$(nproc --all) O=out ARCH=arm64 DTC_EXT=dtc CROSS_COMPILE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1 HOSTCC=clang HOSTCXX=clang++ HOSTAR=llvm-ar HOSTLD=ld.lld CC="ccache clang" LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump READELF=llvm-readelf STRIP=llvm-strip vayu_user_defconfig
+
+    - name: Build kernel
+      run: make -j$(nproc --all) O=out ARCH=arm64 DTC_EXT=dtc CROSS_COMPILE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1 HOSTCC=clang HOSTCXX=clang++ HOSTAR=llvm-ar HOSTLD=ld.lld CC="ccache clang" LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump READELF=llvm-readelf STRIP=llvm-strip all
+
+    - name: Download libufdt
+      run: git clone -q --depth=1 https://android.googlesource.com/platform/system/libufdt
+
+    - name: Download AnyKernel
+      run: |
+        git clone -q --depth=1 https://github.com/chiteroman/AnyKernel3-vayu.git anykernel
+        rm -rf anykernel/.git
+
+    - name: Copy Image
+      run: cp -f out/arch/arm64/boot/Image anykernel/Image
+
+    - name: Copy dtb
+      run: find out/arch/arm64/boot/dts/qcom -name '*.dtb' -exec cat {} + > anykernel/dtb
+
+    - name: Make dtbo
+      run: python3 libufdt/utils/src/mkdtboimg.py create anykernel/dtbo.img --page_size=4096 out/arch/arm64/boot/dts/qcom/vayu-sm8150-overlay.dtbo
+
+    - name: Upload kernel
+      uses: actions/upload-artifact@v4
+      with:
+        name: kernel
+        path: 'anykernel/*'
+        compression-level: 9
+
+    - name: Download KSU
+      run: curl -LSs "https://raw.githubusercontent.com/tiann/KernelSU/main/kernel/setup.sh" | bash -s main
+
+    - name: Build kernel with KSU
+      run: make -j$(nproc --all) O=out ARCH=arm64 DTC_EXT=dtc CROSS_COMPILE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1 HOSTCC=clang HOSTCXX=clang++ HOSTAR=llvm-ar HOSTLD=ld.lld CC="ccache clang" LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump READELF=llvm-readelf STRIP=llvm-strip all
+
+    - name: Copy Image
+      run: cp -f out/arch/arm64/boot/Image anykernel/Image
+
+    - name: Upload KSU kernel
+      uses: actions/upload-artifact@v4
+      with:
+        name: kernel_KSU
+        path: 'anykernel/*'
+        compression-level: 9
+
+    - name: Modify dtbo for MIUI
+      run: |
+        sed -i 's/<70>/<695>/g'   arch/arm64/boot/dts/qcom/dsi-panel-j20s-36-02-0a-lcd-dsc-vid.dtsi
+        sed -i 's/<154>/<1546>/g' arch/arm64/boot/dts/qcom/dsi-panel-j20s-36-02-0a-lcd-dsc-vid.dtsi
+        sed -i 's/<70>/<695>/g'   arch/arm64/boot/dts/qcom/dsi-panel-j20s-42-02-0b-lcd-dsc-vid.dtsi
+        sed -i 's/<154>/<1546>/g' arch/arm64/boot/dts/qcom/dsi-panel-j20s-42-02-0b-lcd-dsc-vid.dtsi
+
+    - name: Build dtbs (for MIUI)
+      run: make -j$(nproc --all) O=out ARCH=arm64 DTC_EXT=dtc CROSS_COMPILE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1 HOSTCC=clang HOSTCXX=clang++ HOSTAR=llvm-ar HOSTLD=ld.lld CC="ccache clang" LD=ld.lld AR=llvm-ar NM=llvm-nm OBJCOPY=llvm-objcopy OBJDUMP=llvm-objdump READELF=llvm-readelf STRIP=llvm-strip dtbs
+
+    - name: Make MIUI dtbo
+      run: python3 libufdt/utils/src/mkdtboimg.py create out/dtbo.img --page_size=4096 out/arch/arm64/boot/dts/qcom/vayu-sm8150-overlay.dtbo
+
+    - name: Upload MIUI dtbo zip
+      uses: actions/upload-artifact@v4
+      with:
+        name: dtbo-miui
+        path: 'out/dtbo.img'
